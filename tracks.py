@@ -1,166 +1,391 @@
-import matplotlib.pyplot as plt
-import math
+# Dependencies
 import numpy as np
+from urllib.request import urlopen, Request
+import json
+import numpy as np
+from datetime import datetime
+from matplotlib import pyplot as plt
 
-freeman_cc2coord = {
-	1: [1, 0],
-	2: [0, 1],
-	3: [-1, 0],
-	4: [0, -1],
-}
+####This is the utils file for project####
+####Containing all the dependent functions useful####
 
-road_type = {
-	'r': [30.0, 1.4],
-	'l': [80.0, 1.0],
-	'm': [120.0, 1.25]
-}
+#----utils of loading----#
+def getUrl(start=(0,0), end=(299,299), min_steps_straight=1, max_steps_straight=6, n_tracks=300):
+    start_point_x = "start_point_x={start_x}".format(start_x=start[0])
+    start_point_y = "&start_point_y={start_y}".format(start_y=start[1])
+    end_point_x = "&end_point_x={end_x}".format(end_x=end[0])
+    end_point_y = "&end_point_y={end_y}".format(end_y=end[1])
+    min_steps_straight = "&min_steps_straight={min_steps_straight}".format(min_steps_straight=min_steps_straight)
+    max_steps_straight = "&max_steps_straight={max_steps_straight}".format(max_steps_straight=max_steps_straight)
+    n_tracks = "&n_tracks={n_tracks}".format(n_tracks=n_tracks)
+    url_head = "http://ucl-rse-with-python.herokuapp.com/road-tracks/tracks/?"
+    url = url_head + start_point_x + start_point_y + end_point_x + end_point_y + min_steps_straight + max_steps_straight + n_tracks
+    return url
 
-terrain = {
-	'd': 2.5, 
-	'g': 1.25,
-	'p': 1.0
-}
+def ReadData(url):
+    request = Request(url)
+    response = urlopen(request)
+    tracksFile = response.read()
+    response.close()
 
-slope = {
-	-8: 0.16,
-	-4: 0.45,
-	0: 1,
-	4: 1.3,
-	8: 2.35,
-	12: 2.90
-}
-
-class SingleTrack:
-	def __init__(self, metadata, track):
-		self.start = metadata['start']
-		self.end = metadata['end']
-		self.cc = track['cc']
-		self.road = track['road']
-		self.terrain = track['terrain']
-		self.eval = track["elevation"]
-
-		self.route = []
-		def route_cc():
-			self.route.append(self.start)
-			for c in self.cc:
-				self.route.append(np.array(freeman_cc2coord[int(c)]) + np.array(self.route[-1]))
-		route_cc()
+    # Decode UTF-8 bytes to Unicode, and convert single quotes
+    # to double quotes to make it valid JSON
+    tracksFile = tracksFile.decode('utf8').replace("'", '"') # Json
+    tracksDict = json.loads(tracksFile)
+    
+    return tracksDict
 
 
+##Road properties and their effect
+#---Road type effect----#
+def roadType(typeStr):
+    #???Use sphinx to add comment automactically???
+    speedFloat = 0.0
+    confFloat = 1.0
 
-	def len(self):
-		return len(self.route)
-	
-	def corners(self):
-		cor = set()
-		if self.start != self.end:
-			cor.add(tuple(self.start))
-			cor.add(tuple(self.end))
-		for i in range(1, len(self.cc)):
-			if (int(self.cc[i - 1]) + int(self.cc[i])) % 2 != 0:
-				cor.add(tuple(self.route[i]))
+    #Conditional blocks
+    if typeStr == 'r':
+        speedFloat=30; confFloat = 1.40
+    elif typeStr == 'l':
+        speedFloat = 80; confFloat = 1.0
+    elif typeStr == 'm':
+        speedFloat = 120; confFloat = 1.25
+    else:
+        print('Invalid Roda Type')
+    
+    return speedFloat, confFloat
 
-		return list(cor)
-	
-	def visualise(self, show=True, filename="my_track.png"):
-		plt.subplot(1, 2, 1)
-		plt.plot(range(len(self.eval)), self.eval)
-		plt.subplot(1, 2, 2)
-		x = [ p[0] for p in self.route]
-		y = [ p[1] for p in self.route]
-		plt.plot(x, y)
+#---Terrain effect---#
+def terrainType(teriStr):
+    #???Use sphinx to add comment automactically???
+    confFloat = 1.0
 
-		if show:
-			plt.show()
-		else:
-			plt.savefig(filename)
+    #Conditional blocks
+    if teriStr == 'd':
+        confFloat = 2.5
+    elif teriStr == 'g':
+        confFloat = 1.25
+    elif teriStr == 'p':
+        confFloat = 1.0
+    else:
+        print('Invalid Terrian Type')
+    
+    return confFloat
+
+#---Slope effect---#
+def slopeRange(slopeFloat):
+    #???Use sphinx to add comment automactically???
+    confFloat = 1.0
+    #Transfer slope to percentage scale
+    slopeFloat = slopeFloat * 100
+
+    #Conditional blocks
+    if slopeFloat < -6:
+        confFloat = 0.16
+    elif slopeFloat >= -6 and slopeFloat < -2:
+        confFloat = 0.45
+    elif slopeFloat >= -2 and slopeFloat < 2:
+        confFloat = 1.0
+    elif slopeFloat >= 2 and slopeFloat < 6:
+        confFloat = 1.3
+    elif slopeFloat >= 6 and slopeFloat < 10:
+        confFloat = 2.35
+    elif slopeFloat >= 10:
+        confFloat = 2.90
+    else:
+        print('Invalid Slope Range')
+    return confFloat
+
+#---Calculate Slope---#
+def calSlope(elevaInta,elevaIntb,resolFloat):
+    #???Use sphinx to add comment automactically???
+    #Scale resolution from km to m
+    resolFloat = resolFloat * 1000
+    slopeFloat = (elevaIntb - elevaInta) / resolFloat
+    return slopeFloat
+
+#---Combining all the factors together---#
+##--Calculate actual distance--##
+'''
+Combining the slope effect to the distance
+input: slope, resolution
+output: distance
+'''
+def calDistance(slopeFloat, resolution):
+    #???Use sphinx to add comment automactically???
+
+    return  resolution * np.sqrt(1+slopeFloat**2)
+##--Calculate carbon emission--#
+'''
+Using actual distance to give carbon emission
+input:  avgConsumption
+        resolution, Effects(slope, road, terrian), distance
+        carbonproduction
+output: carbon
+'''
+
+def calCons(confRoad, confTeri, confSlope, distance, avgCons=0.054, carbonProd=2.6391):
+    #???Use sphinx to add comment automactically???
+    distance = distance / 1000
+
+    carbonEmission = avgCons * confRoad * confTeri * confSlope * distance * carbonProd # Unit: kg
+
+    return carbonEmission
 
 
-	def distance(self):
-		d = 0
-		for e in self.eval:
-			d += math.sqrt(1 + (e / 100)**2)
-		return d
-
-	def time(self):
-		t = 0.0
-		for r in self.road:
-			t += 1.0 / road_type[r][0]
-		return t
-
-	def co2(self):
-		emit = 0.0
-		for i in range(len(self.road)):
-			sl = np.array(list(slope.keys())) - self.eval[i]
-			emit += 5.4 / 100 * slope[list(slope.keys())[sl.argmin()]] * \
-				road_type[self.road[i]][1] * terrain[self.terrain[i]] * \
-					math.sqrt(1 + (self.eval[i] / 100)**2) * 1000 * 2.6391
-		return emit
-
-	def __str__(self):
-		return("<SingleTrack: starts at ({},{}) - {} steps>".format(self.start[0], self.start[1], len(self.cc)))
 
 
-#test = SingleTrack({"datetime":"2021-12-11T21:12:20","end":[4,2],"mapsize":[5,5],"n_tracks":5,"rangesteps":[1,2],"resolution":1,"start":[2,3],"units_elevation":"m","units_steps":"km"},{"cc":"11233344111","elevation":[17,18,19,24,23,22,21,16,11,12,13,14],"road":"llmmmmlrrrr","terrain":"pggppdddppg"})
-#print(test)
-#print(test.co2())
-#print(test.time())
-#print(test.len())
-#test.visualise()
-#print(test.corners())
+#----utils Class----#
 
-class Tracks:
-	def __init__(self, data, map_size):
-		self.metadata = data["metadata"]
-		self.tracks = []
-		for track in data["tracks"]:
-			atrack = SingleTrack(self.metadata, track)
-			if(np.max(np.array(atrack.route)) >= map_size or np.min(np.array(atrack.route)) < 0):
-				continue
-			self.tracks.append(atrack)
 
-		self.start = self.metadata["start"]
-		self.end = self.metadata["end"]
-		self.map_size = map_size
-		self.date = self.metadata["datetime"]
 
-	def len(self):
-		return len(self.tracks)
-	
-	def greenest(self):
-		minco2 = float("inf")
-		argmin = None
-		for t in self.tracks:
-			if t.co2() < minco2:
-				minco2 = t.co2()
-				argmin = t
-		return argmin
 
-	def fastest(self):
-		mintime = float("inf")
-		argmin = None
-		for t in self.tracks:
-			if t.time() < mintime:
-				mintime = t.time()
-				argmin = t
-		return argmin
+def ccReader(start, cc):
+    points = [start]
+    current = start[:] # Initializing
+    for i in range(len(cc)):
+        if cc[i] == "1":
+            next_step = [current[0] + 1, current[1]]
+            points.append(next_step)
+            current = next_step
+        elif cc[i] == "2":
+            next_step = [current[0], current[1] + 1]
+            points.append(next_step)
+            current = next_step
+        elif cc[i] == "3":
+            next_step = [current[0] - 1, current[1]]
+            points.append(next_step)
+            current = next_step
+        elif cc[i] == "4":
+            next_step = [current[0], current[1] - 1]
+            points.append(next_step)
+            current = next_step
+        else :
+            print("Unexpected chaincode value.")
+    return points
 
-	def shortest(self):
-		mindis = float("inf")
-		argmin = None
-		for t in self.tracks:
-			dist = t.distance()
-			if dist < mindis:
-				mindis = dist
-				argmin = t
-		return argmin
+def TurningPoints_cc(cc):
 
-	def get_track(self, x):
-		return self.tracks[x]
+  new_cc = [[cc[0], '0']]
 
-	def __str__(self):
-		return("<Tracks: {} from ({}, {}) to ({},{})>".format(self.len(), self.start[0], self.start[1],  self.end[0], self.end[1]))
+  for i in range(len(cc)-1):
+    if cc[i+1] != cc[i]:
+      direction = cc[i+1]
+      index = i+1
 
-	def kmeans(self, clusters=3, iterations=10):
-		pass ##TODO
+      new_cc.append([direction,str(index)])
 
+    else:
+      pass
+
+  return new_cc
+
+
+#----Class----#
+
+class SingleTrack():
+    
+    def __init__(self, tracksDict, index):
+        
+        self.start = tracksDict['metadata']['start']
+        self.end = tracksDict['metadata']['end']
+        self.steps = len(tracksDict['tracks'][index]['cc'])
+        self.cc = tracksDict['tracks'][index]['cc']
+        self.road = tracksDict['tracks'][index]['road']
+        self.terrain = tracksDict['tracks'][index]['terrain']
+        self.elevation = tracksDict['tracks'][index]['elevation']
+        
+    def __str__(self):
+        return "<SingleTrack: starts at ({x0},{y0}) - {steps} steps>".format(x0=str(self.start[0]),y0=str(self.start[1]), steps = str(self.steps))
+    
+    def __len__(self):
+        return self.steps
+    
+    def corners(self):
+        corners = []
+        points = ccReader(self.start, self.cc)
+        cornersTuple = TurningPoints_cc(self.cc)
+        for i in range(len(cornersTuple)):
+            corners.append(points[int(cornersTuple[i][1])])
+        corners.append(points[-1])
+        return corners
+    
+    def visualise(self, show = True, filename = "track.png"):
+        
+        # Default: Show; Not Save
+        
+        # ---- Plot Figures ----
+        plt.figure(figsize=(16,8))
+        
+        # ---- Figure 1: ----
+        elevation = self.elevation
+        dist = 0
+        distance = [dist]
+        for i in range(len(self.cc)):
+            slope = calSlope(self.elevation[i], self.elevation[i+1], 1)
+            dist += calDistance(slope, 1)
+            distance.append(dist)
+            
+        plt.subplot(1, 2, 1)
+
+        plt.xlabel('distance(km)')
+        plt.ylabel('elevation(m)')
+        plt.plot(distance,elevation,'r-')
+
+        # ---- Figure 2: ----
+
+        # coordinates:
+        coordinates = ccReader(self.start,self.cc)
+
+        x = [row[0] for row in coordinates]
+        y = [row[1] for row in coordinates]
+
+        plt.subplot(1, 2, 2)
+
+        plt.xlabel('x(km)')
+        plt.ylabel('y(km)')
+        plt.suptitle(filename)
+        
+        for i in range(len(coordinates)):
+            plt.plot(x[i:i+2], y[i:i+2], 'r-')
+        
+        plt.show()
+        
+        # Check whether show and save .png figure or not
+        if show == False:
+            plt.savefig(filename)
+            plt.close()
+        else:
+            pass
+        
+    def co2(self):
+        co2 = 0.0
+        for i in range(len(self.cc)):
+            slope = calSlope(self.elevation[i], self.elevation[i+1], 1)
+            _, conf_r = roadType(self.road[i])
+            conf_t = terrainType(self.terrain[i])
+            conf_s = slopeRange(slope)
+            distance = calDistance(slope, 1)
+            co2 += calCons(conf_r, conf_t, conf_s, distance)
+        return co2
+    
+    def distance(self):
+        distance = 0.0
+        for i in range(len(self.cc)):
+            slope = calSlope(self.elevation[i], self.elevation[i+1], 1)
+            distance += calDistance(slope, 1)
+        return distance
+    
+    def time(self):
+        time = 0.0
+        for i in range(len(self.cc)):
+            slope = calSlope(self.elevation[i], self.elevation[i+1], 1)
+            distance = calDistance(slope, 1)
+            speed, _ = roadType(self.road[i])
+            time += distance / speed
+        return time
+    
+    
+    
+    
+    
+#---Tracks---#
+
+#----Define Tracks class----#
+
+class Tracks():
+
+    def __init__(self,rawDict):
+        self.tracksDic = rawDict
+
+        self.metadata = self.tracksDic['metadata']
+        self.tracks = self.tracksDic['tracks']
+
+        self.datetimeStr = self.metadata['datetime']
+        self.date = datetime.strptime(self.datetimeStr, '%Y-%m-%dT%H:%M:%S')
+        self.start = self.metadata['start']
+        self.end = self.metadata['end']
+        self.mapsize = self.metadata['mapsize']
+        self.n_tracks = self.metadata['n_tracks']  # len(tracks)
+        self.resolution = self.metadata['resolution']
+        self.units_elevation = self.metadata['units_elevation']
+        self.units_steps = self.metadata['units_steps']
+        
+        self.track = []
+        for i in range(self.n_tracks):
+            self.track.append(SingleTrack(self.tracksDic, i))
+    # ---------------------
+    def __str__(self):
+        return("<Tracks: {} from ({}, {}) to ({},{})>".format(self.n_tracks, self.start[0], self.start[1], self.end[0], self.end[1]))
+    
+    def greenest(self):
+        
+        # Initialisation
+        tracks_co2 = []
+        
+        # co2:
+        for i in range(len(self.tracks)):
+ 
+            a_track = SingleTrack(self.tracksDic, i)
+            co2 = a_track.co2()
+            tracks_co2.append(co2)
+        
+        # get the greenest index
+        index = tracks_co2.index(np.min(tracks_co2))
+        
+        # greenest object
+        greenest_track = self.get_track(index)
+        
+        return greenest_track
+        
+    def fastest(self):
+        
+        # Initialisation
+        tracks_time = []
+        
+        # time:
+        for i in range(len(self.tracks)):
+ 
+            a_track = SingleTrack(self.tracksDic, i)
+            time = a_track.time()
+            tracks_time.append(time)
+        
+        # get the fastest index
+        index = tracks_time.index(np.min(tracks_time))
+        
+        # fastest object
+        fastest_track = self.get_track(index)
+        
+        return fastest_track
+        
+    def shortest(self):
+       
+        # Initialisation
+        tracks_distance = []
+        
+        # time:
+        for i in range(len(self.tracks)):
+ 
+            a_track = SingleTrack(self.tracksDic, i)
+            distance = a_track.distance()
+            tracks_distance.append(distance)
+        
+        # get the fastest index
+        index = tracks_distance.index(np.min(tracks_distance))
+        
+        # fastest object
+        shortest_track = self.get_track(index)
+        
+        return shortest_track
+    
+    # -- clustering --
+    
+    def kmeans():
+        
+        return 0
+    
+    def get_track(self, x):
+        #assert x < len(tracks)
+        
+        return self.track[x]
+        

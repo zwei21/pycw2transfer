@@ -5,27 +5,28 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--start", nargs=2, required=True)
 	parser.add_argument("--end", nargs=2, required=True)
-	parser.add_argument("--verbose", nargs=1, required=False)
+	parser.add_argument('-v', '--verbose', action="count", 
+                        help="increase output verbosity (e.g., -vv is more than -v)")
 	args = parser.parse_args()
 	
 	start = args.start
 	end = args.end
 	
-	data = query_tracks(start, end, 50, save=False)
+	tracks = query_tracks(start, end, n_tracks=50, save=False)
 
-	tracks_data = Tracks(data, 300)
-
-	green = tracks_data.greenest()
+	green = tracks.greenest()
+	route = TurningPoints_cc(green.cc)
+	corners = green.corners()
 
 	if args.verbose is None:
 		print("Path:", end="")
-		for p in green.route:
+		for p in green.corners():
 			print(p, end=" ")
 		print("\n", end="")
 	else:
-		pass
+		quedemap(route, corners)
 	print("CO2:", green.co2(), "kg")
-	print("Time:",green.time())
+	float2time(green.time())
 
 
 
